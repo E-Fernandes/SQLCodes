@@ -1,0 +1,61 @@
+CREATE VIEW VW_ConsolidadaNecessidadeCompra 
+as  
+select  distinct 
+vsis.ID_SolicitacaoItem, 
+vsis.ID_Solicitacao as NC,  
+sc.FL_Emergencial,  
+sc.NR_OS,  
+sc.ID_CentroResultado,
+vsis.CD_Produto,  
+case
+when vsis.CD_Produto in  ('07.0200', 'HAGEY23', 'S39.021', 'PODM23', 'BSNIE23','IDPSK8', 'MNDI23') then 1
+when vsis.CD_Produto in ('DNK.000', 'KJDU88') and sc.DT_Cadastro < '2020-08-05' then 1 
+else 0 
+end as 'CD_ValidaSub', 
+vsis.DT_Necessidade, 
+rtrim(isnull(usu.NM_Usuario,'')) as 'Solicitante',  
+isnull(pc.DS_Fornecedor, vcv.DS_Fornecedor) as 'DS_Fornecedor', 
+upper(ltrim(rtrim(isnull(isnull(pc.NM_Comprador, vcv.Comprador), usu.NM_Usuario)))) as 'Comprador',  
+(select stuff((select '; ' + us.NM_Usuario + ' - ' + convert(char(10),sa.DT_Autorizacao  , 103)  
+FROM SolicitacaoCompraAutorizacao sa (nolock)  inner join Usuario us (nolock) on sa.CD_UsuarioAutorizacao = us.CD_Usuario  
+where sa.ID_SolicitacaoItem = vsis.ID_SolicitacaoItem FOR XML PATH ('')), 1, 1, '')) as 'DS_Aprovadores',  
+case 
+when vsis.FL_MaterialServico = 1 then 'Material' 
+when vsis.FL_MaterialServico = 2 and vsis.CD_Produto in  ('07.0200', 'HAGEY23', 'S39.021', 'PODM23', 'BSNIE23','IDPSK8', 'MNDI23') then 'Serviço subcontratada' 
+when vsis.FL_MaterialServico = 2 and vsis.CD_Produto in ('DNK.000', 'KJDU88') and sc.DT_Cadastro < '2020-08-05' then 'Serviço subcontratada' 
+else 'Serviço' 
+end as 'Tipo', 
+ac.DS_Aplicacao,  
+isnull(pc.QT_Item, vsis.QT_Item) as 'QT_Item',  
+vsis.DS_Unidade,  
+sc.DT_Cadastro,  
+isnull(isnull(vcv.DT_Julgamento, esb.DT_Cadastro),  pc.DT_Inclusao) as 'DT_Julgamento',  
+(select max(UsuDir.NM_Usuario) from Usuario UsuDir (nolock)  where UsuDir.CD_Usuario = pc.ID_UsuarioAprovacaoDiretoria) as 'AprovacaoDIR', 
+isnull(vcv.DT_AprovacaoDiretoria, pc.DT_AprovacaoDiretoria) as 'DataAprovacaoDIR',  
+(select max(UsuUna.NM_Usuario) from Usuario UsuUna (nolock)  where UsuUna.CD_Usuario = pc.ID_UsuarioAprovacaoGerencia)  as 'AprovacaoUNA',  
+isnull(vcv.DT_AprovacaoGerente,  pc.DT_AprovacaoGerencia) as 'DataAprovacaoUNA',  
+isnull(vcv.DT_AprovacaoPadrao,  isnull(pc.DT_Aprovacao, pc.DT_Inclusao)) as 'DataAprovacaoAuto',  
+vsis.DS_Item,  ar.DS_AreaResponsavel, 
+isnull(isnull(pc.VR_Unitario,esb.VR_Unitario), vcv.VR_Unitario) as 'VR_Unitario',  
+isnull(isnull(pc.VR_PrecoFinal,esb.VR_Total),vcv.VR_Total) as 'VR_Total',  
+se.DS_Enum as DS_Status, 
+vsis.DS_EtapaAprovacao,  
+case 
+when vsis.DS_EtapaAprovacao = 'Compras' 
+then 1  when vsis.DS_EtapaAprovacao = 'Gerente' 
+then 2  when vsis.DS_EtapaAprovacao = 'Gerente Operacional' 
+then 3  when vsis.DS_EtapaAprovacao = 'Diretor Operacional' 
+then 4  when vsis.DS_EtapaAprovacao = 'Diretor Geral e CFO' 
+then 5  when vsis.DS_EtapaAprovacao = 'Comitê de Investimento Exterior' 
+then 6  else 7 
+end as 'DS_OrdemAprovacao',  
+vsis.DT_PrevFaturamento from VW_SolCompraItemStatusADN vsis  
+left join Solicitacao_Compra (nolock) on vsis.ID_Solicitacao = sc.ID_Solicitacao  
+left join Pedido_Compra_View pc (nolock) on vsis.ID_SolicitacaoItem = pc.ID_SolicitacaoItem and pc.FL_Cancelado <> 'S'  
+left join Aprovacao_esb esb (nolock) on vsis.ID_SolicitacaoItem = esb.ID_SolicitacaoItem and esb.DS_WddStatus in('W','Y') and esb.ID_StatusAprovacao in (1,2,3) and (isnull(esb.FL_AnularEsboco,0) = 0)  
+left join Cotacoes_Vencedoras (nolock) vcv on vsis.ID_SolicitacaoItem = vcv.ID_SolicitacaoItem  
+left join Usuario usu (nolock) on usu.CD_Usuario = sc.CD_UsuarioCadastro  
+left join Area_Responsavel ar (nolock) on sc.ID_AreaResponsavel = ar.ID_AreaResponsavel  
+left join Aplicacao ac (nolock) on sc.FL_ConsumoRevenda = ac.ID_Aplicacao  
+left join Enum se (nolock) on vsis.ID_StatusERP = se.CD_Enum and se.CD_Chave = 'STTUSNCPR'  
+where year(sc.DT_Cadastro) >= '2020'
